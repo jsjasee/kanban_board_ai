@@ -1,9 +1,18 @@
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 app = FastAPI(title="pm-backend")
 
-# use the command: `uv run uvicorn backend.main:app --reload` to test the backend scaffold in development mode
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "out"
+
+
+def _frontend_file(path: str) -> Path:
+    candidate = (FRONTEND_DIR / path).resolve()
+    if FRONTEND_DIR.resolve() not in candidate.parents and candidate != FRONTEND_DIR.resolve():
+        raise HTTPException(status_code=404, detail="Not found")
+    return candidate
 
 
 @app.get("/api/health")
@@ -12,22 +21,33 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    """Return a temporary root page until the frontend build is wired in."""
-    return """
-    <!doctype html>
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Project Management MVP</title>
-      </head>
-      <body>
-        <main>
-          <h1>Project Management MVP</h1>
-          <p>Backend scaffold is running.</p>
-        </main>
-      </body>
-    </html>
+@app.get("/{path:path}")
+def frontend(path: str = "") -> FileResponse:
+    """Serve the exported frontend and fall back to index.html for app routes.
+
+    Args:
+        path: Requested frontend asset or route path.
+
+    Returns:
+        A file response for the requested asset or the exported index page.
+
+    Raises:
+        HTTPException: If the frontend build is missing or the path is invalid.
     """
+    if not FRONTEND_DIR.exists():
+        raise HTTPException(status_code=503, detail="Frontend build is missing")
+
+    requested = _frontend_file(path)
+    if requested.is_file():
+        return FileResponse(requested)
+
+    if requested.is_dir():
+        index_file = requested / "index.html"
+        if index_file.is_file():
+            return FileResponse(index_file)
+
+    index_file = FRONTEND_DIR / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
+
+    raise HTTPException(status_code=503, detail="Frontend entrypoint is missing")
