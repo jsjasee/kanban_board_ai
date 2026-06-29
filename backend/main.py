@@ -1,11 +1,15 @@
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
+from backend.storage import get_board, save_board
+
 app = FastAPI(title="pm-backend")
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "out"
+MVP_USERNAME = "user"
 
 
 def _frontend_file(path: str) -> Path:
@@ -19,6 +23,18 @@ def _frontend_file(path: str) -> Path:
 def health() -> dict[str, str]:
     """Return a simple health status for container smoke checks."""
     return {"status": "ok"}
+
+
+@app.get("/api/board")
+def read_board() -> dict[str, Any]:
+    """Return the current MVP user's persisted board."""
+    return get_board(MVP_USERNAME)
+
+
+@app.put("/api/board")
+def update_board(board: dict[str, Any]) -> dict[str, Any]:
+    """Replace the current MVP user's persisted board."""
+    return save_board(MVP_USERNAME, board)
 
 
 @app.get("/{path:path}")
