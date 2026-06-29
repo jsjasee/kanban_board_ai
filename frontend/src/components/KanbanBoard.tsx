@@ -5,9 +5,12 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  getFirstCollision,
+  pointerWithin,
+  rectIntersection,
   useSensor,
   useSensors,
-  closestCorners,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -26,6 +29,44 @@ export const KanbanBoard = () => {
   );
 
   const cardsById = useMemo(() => board.cards, [board.cards]);
+  const columnIds = useMemo(() => board.columns.map((column) => column.id), [board.columns]);
+
+  /**
+   * Prefer the column under the pointer so filled columns stay droppable,
+   * then fall back to card intersections when reordering within that column.
+   */
+  const collisionDetection: CollisionDetection = (args) => {
+    const pointerCollisions = pointerWithin(args);
+    const overId = getFirstCollision(pointerCollisions, "id");
+
+    if (overId && columnIds.includes(String(overId))) {
+      return pointerCollisions;
+    }
+
+    const intersectingColumns = rectIntersection({
+      ...args,
+      droppableContainers: args.droppableContainers.filter((container) =>
+        columnIds.includes(String(container.id))
+      ),
+    });
+    const columnId = getFirstCollision(intersectingColumns, "id");
+
+    if (!columnId) {
+      return rectIntersection(args);
+    }
+
+    const cardsInColumn =
+      board.columns.find((column) => column.id === columnId)?.cardIds ?? [];
+    const cardCollisions = rectIntersection({
+      ...args,
+      droppableContainers: args.droppableContainers.filter(
+        (container) =>
+          container.id === columnId || cardsInColumn.includes(String(container.id))
+      ),
+    });
+
+    return cardCollisions.length > 0 ? cardCollisions : intersectingColumns;
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
@@ -135,7 +176,7 @@ export const KanbanBoard = () => {
 
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetection}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
