@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -53,6 +53,13 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isReadyToSave, setIsReadyToSave] = useState(false);
   const [syncError, setSyncError] = useState("");
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState([
+    {
+      role: "assistant",
+      content: "Ask me to create, move, or rewrite cards once chat wiring is enabled.",
+    },
+  ]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -202,6 +209,16 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
     });
   };
 
+  const handleChatSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const message = chatInput.trim();
+    if (!message) {
+      return;
+    }
+    setChatMessages((prev) => [...prev, { role: "user", content: message }]);
+    setChatInput("");
+  };
+
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
 
   if (isLoading) {
@@ -266,32 +283,82 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
           ) : null}
         </header>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={collisionDetection}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <section className="grid gap-6 lg:grid-cols-5">
-            {board.columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                cards={column.cardIds.map((cardId) => board.cards[cardId])}
-                onRename={handleRenameColumn}
-                onAddCard={handleAddCard}
-                onDeleteCard={handleDeleteCard}
-              />
-            ))}
-          </section>
-          <DragOverlay>
-            {activeCard ? (
-              <div className="w-[260px]">
-                <KanbanCardPreview card={activeCard} />
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={collisionDetection}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <section className="grid gap-6 lg:grid-cols-5">
+              {board.columns.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  cards={column.cardIds.map((cardId) => board.cards[cardId])}
+                  onRename={handleRenameColumn}
+                  onAddCard={handleAddCard}
+                  onDeleteCard={handleDeleteCard}
+                />
+              ))}
+            </section>
+            <DragOverlay>
+              {activeCard ? (
+                <div className="w-[260px]">
+                  <KanbanCardPreview card={activeCard} />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+
+          <aside className="flex min-h-[640px] flex-col rounded-[32px] border border-[var(--stroke)] bg-white/85 p-6 shadow-[var(--shadow)] backdrop-blur">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
+                AI Copilot
+              </p>
+              <h2 className="mt-3 font-display text-3xl font-semibold text-[var(--navy-dark)]">
+                Board chat
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-[var(--gray-text)]">
+                Draft requests here, then wire them to the backend in the next block.
+              </p>
+            </div>
+
+            <div className="mt-6 flex-1 space-y-4 overflow-y-auto">
+              {chatMessages.map((message, index) => (
+                <div
+                  key={`${message.role}-${index}`}
+                  className={
+                    message.role === "user"
+                      ? "ml-8 rounded-[24px] bg-[var(--primary-blue)] px-4 py-3 text-sm text-white"
+                      : "mr-8 rounded-[24px] border border-[var(--stroke)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--navy-dark)]"
+                  }
+                >
+                  {message.content}
+                </div>
+              ))}
+            </div>
+
+            <form onSubmit={handleChatSubmit} className="mt-6 border-t border-[var(--stroke)] pt-5">
+              <label className="block text-sm font-semibold text-[var(--navy-dark)]">
+                Message
+                <textarea
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  rows={4}
+                  placeholder="Move onboarding work into Review and add a launch checklist card."
+                  className="mt-2 w-full resize-none rounded-[24px] border border-[var(--stroke)] bg-white px-4 py-3 text-sm outline-none transition focus:border-[var(--primary-blue)]"
+                />
+              </label>
+              <button
+                type="submit"
+                className="mt-4 w-full rounded-[20px] bg-[var(--purple-secondary)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                Add to chat
+              </button>
+            </form>
+          </aside>
+        </div>
       </main>
     </div>
   );

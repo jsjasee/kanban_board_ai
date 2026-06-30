@@ -3,14 +3,29 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, ConfigDict
 
-from backend.openrouter import complete_prompt
-from backend.storage import get_board, save_board
+from backend.openrouter import complete_board_chat, complete_prompt
+from backend.storage import apply_ai_board_update, get_board, save_board
 
 app = FastAPI(title="pm-backend")
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "out"
 MVP_USERNAME = "user"
+
+
+class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    content: str
+
+
+class AiChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message: str
+    history: list[ChatMessage] = []
 
 
 def _frontend_file(path: str) -> Path:
@@ -56,6 +71,34 @@ def test_ai(payload: dict[str, str]) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="Prompt is required")
     try:
         return {"reply": complete_prompt(prompt)}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/ai/chat")
+def chat_with_ai(payload: AiChatRequest) -> dict[str, Any]:
+    """Run one AI chat turn and return the latest persisted board state.
+
+    Args:
+        payload: Request containing the latest user message and prior chat history.
+
+    Returns:
+        The assistant reply plus the current board after any AI update is applied.
+
+    Raises:
+        HTTPException: If the message is blank or the AI call/update fails.
+    """
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required")
+    try:
+        ai_result = complete_board_chat(
+            get_board(MVP_USERNAME),
+            [item.model_dump() for item in payload.history],
+            message,
+        )
+        board = apply_ai_board_update(MVP_USERNAME, ai_result["board"])
+        return {"reply": ai_result["reply"], "board": board}
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
