@@ -1,36 +1,37 @@
+import logging
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from backend.openrouter import complete_board_chat, complete_prompt
 from backend.storage import apply_ai_board_update, get_board, save_board
 
 app = FastAPI(title="pm-backend")
+logger = logging.getLogger(__name__)
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "out"
 MVP_USERNAME = "user"
 
 
 class ChatMessage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
     role: str
     content: str
 
 
 class AiChatRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
     message: str
     history: list[ChatMessage] = []
 
 
 def _frontend_file(path: str) -> Path:
     candidate = (FRONTEND_DIR / path).resolve()
-    if FRONTEND_DIR.resolve() not in candidate.parents and candidate != FRONTEND_DIR.resolve():
+    if (
+        FRONTEND_DIR.resolve() not in candidate.parents
+        and candidate != FRONTEND_DIR.resolve()
+    ):
         raise HTTPException(status_code=404, detail="Not found")
     return candidate
 
@@ -72,6 +73,7 @@ def test_ai(payload: dict[str, str]) -> dict[str, str]:
     try:
         return {"reply": complete_prompt(prompt)}
     except Exception as exc:
+        logger.exception("AI test request failed")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
@@ -100,6 +102,7 @@ def chat_with_ai(payload: AiChatRequest) -> dict[str, Any]:
         board = apply_ai_board_update(MVP_USERNAME, ai_result["board"])
         return {"reply": ai_result["reply"], "board": board}
     except Exception as exc:
+        logger.exception("AI chat request failed")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 

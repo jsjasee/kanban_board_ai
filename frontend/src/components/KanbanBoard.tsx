@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type SubmitEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -21,6 +21,15 @@ import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
 type KanbanBoardProps = {
   onLogout?: () => void;
 };
+
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  sendToAi?: boolean;
+};
+
+type CollisionArgs = Parameters<CollisionDetection>[0];
+type DroppableContainer = CollisionArgs["droppableContainers"][number];
 
 /**
  * Reads the persisted MVP board from the backend API.
@@ -47,6 +56,45 @@ const saveBoard = async (board: BoardData): Promise<void> => {
   }
 };
 
+/**
+ * Extracts the backend error detail so the UI can show the real failure.
+ */
+const readErrorMessage = async (
+  response: Response,
+  fallback: string,
+): Promise<string> => {
+  const payload = await response.text();
+  if (!payload) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(payload) as { detail?: string };
+    return parsed.detail || payload;
+  } catch {
+    return payload;
+  }
+};
+
+/**
+ * Sends one sidebar message to the backend AI route.
+ */
+const sendAiMessage = async (message: string, history: ChatMessage[]) => {
+  const response = await fetch("/api/ai/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      message,
+      history: history
+        .filter((item) => item.sendToAi !== false)
+        .map(({ role, content }) => ({ role, content })),
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "AI chat failed."));
+  }
+  return response.json() as Promise<{ reply: string; board: BoardData }>;
+};
+
 export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(() => initialData);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
@@ -54,21 +102,41 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
   const [isReadyToSave, setIsReadyToSave] = useState(false);
   const [syncError, setSyncError] = useState("");
   const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState([
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content: "Ask me to create, move, or rewrite cards once chat wiring is enabled.",
+      content:
+        "Ask me to create, move, or rewrite cards once chat wiring is enabled.",
+      sendToAi: false,
     },
   ]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const skipNextSave = useRef(false);
+  const pendingSaveRef = useRef<Promise<boolean>>(Promise.resolve(true));
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
-    })
+    }),
   );
 
   const cardsById = useMemo(() => board.cards, [board.cards]);
-  const columnIds = useMemo(() => board.columns.map((column) => column.id), [board.columns]);
+  const columnIds = useMemo(
+    () => board.columns.map((column) => column.id),
+    [board.columns],
+  );
+
+  const persistBoard = async (nextBoard: BoardData): Promise<boolean> => {
+    try {
+      await saveBoard(nextBoard);
+      setSyncError("");
+      return true;
+    } catch {
+      setSyncError("Board failed to save.");
+      return false;
+    }
+  };
 
   useEffect(() => {
     let isCancelled = false;
@@ -103,18 +171,19 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
     if (!isReadyToSave) {
       return;
     }
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
 
-    void saveBoard(board).then(
-      () => setSyncError(""),
-      () => setSyncError("Board failed to save.")
-    );
+    pendingSaveRef.current = persistBoard(board);
   }, [board, isReadyToSave]);
 
   /**
    * Prefer the column under the pointer so filled columns stay droppable,
    * then fall back to card intersections when reordering within that column.
    */
-  const collisionDetection: CollisionDetection = (args) => {
+  const collisionDetection: CollisionDetection = (args: CollisionArgs) => {
     const pointerCollisions = pointerWithin(args);
     const overId = getFirstCollision(pointerCollisions, "id");
 
@@ -124,8 +193,9 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
 
     const intersectingColumns = rectIntersection({
       ...args,
-      droppableContainers: args.droppableContainers.filter((container) =>
-        columnIds.includes(String(container.id))
+      droppableContainers: args.droppableContainers.filter(
+        (container: DroppableContainer) =>
+          columnIds.includes(String(container.id)),
       ),
     });
     const columnId = getFirstCollision(intersectingColumns, "id");
@@ -139,8 +209,9 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
     const cardCollisions = rectIntersection({
       ...args,
       droppableContainers: args.droppableContainers.filter(
-        (container) =>
-          container.id === columnId || cardsInColumn.includes(String(container.id))
+        (container: DroppableContainer) =>
+          container.id === columnId ||
+          cardsInColumn.includes(String(container.id)),
       ),
     });
 
@@ -169,7 +240,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
     setBoard((prev) => ({
       ...prev,
       columns: prev.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column
+        column.id === columnId ? { ...column, title } : column,
       ),
     }));
   };
@@ -185,7 +256,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
       columns: prev.columns.map((column) =>
         column.id === columnId
           ? { ...column, cardIds: [...column.cardIds, id] }
-          : column
+          : column,
       ),
     }));
   };
@@ -195,7 +266,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
       return {
         ...prev,
         cards: Object.fromEntries(
-          Object.entries(prev.cards).filter(([id]) => id !== cardId)
+          Object.entries(prev.cards).filter(([id]) => id !== cardId),
         ),
         columns: prev.columns.map((column) =>
           column.id === columnId
@@ -203,20 +274,47 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
                 ...column,
                 cardIds: column.cardIds.filter((id) => id !== cardId),
               }
-            : column
+            : column,
         ),
       };
     });
   };
 
-  const handleChatSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleChatSubmit = async (event: SubmitEvent) => {
     event.preventDefault();
     const message = chatInput.trim();
-    if (!message) {
+    if (!message || isChatLoading) {
       return;
     }
-    setChatMessages((prev) => [...prev, { role: "user", content: message }]);
+    const nextHistory = [
+      ...chatMessages,
+      { role: "user" as const, content: message },
+    ];
+    setChatMessages(nextHistory);
     setChatInput("");
+    setChatError("");
+    setIsChatLoading(true);
+    try {
+      if (!(await pendingSaveRef.current) || !(await persistBoard(board))) {
+        setChatError("Board failed to save.");
+        return;
+      }
+      const response = await sendAiMessage(message, chatMessages);
+      skipNextSave.current = true;
+      setBoard(response.board);
+      setSyncError("");
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: response.reply },
+      ]);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "AI chat failed.";
+      console.error("AI chat failed", error);
+      setChatError(message);
+    } finally {
+      setIsChatLoading(false);
+    }
   };
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
@@ -245,8 +343,9 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
                 Kanban Studio
               </h1>
               <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--gray-text)]">
-                Keep momentum visible. Rename columns, drag cards between stages,
-                and capture quick notes without getting buried in settings.
+                Keep momentum visible. Rename columns, drag cards between
+                stages, and capture quick notes without getting buried in
+                settings.
               </p>
             </div>
             <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] px-5 py-4">
@@ -279,7 +378,9 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
             ))}
           </div>
           {syncError ? (
-            <p className="text-sm font-semibold text-[var(--purple-secondary)]">{syncError}</p>
+            <p className="text-sm font-semibold text-[var(--purple-secondary)]">
+              {syncError}
+            </p>
           ) : null}
         </header>
 
@@ -320,7 +421,8 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
                 Board chat
               </h2>
               <p className="mt-3 text-sm leading-6 text-[var(--gray-text)]">
-                Draft requests here, then wire them to the backend in the next block.
+                Draft requests here, then wire them to the backend in the next
+                block.
               </p>
             </div>
 
@@ -337,9 +439,17 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
                   {message.content}
                 </div>
               ))}
+              {isChatLoading ? (
+                <div className="mr-8 rounded-[24px] border border-[var(--stroke)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--gray-text)]">
+                  Thinking...
+                </div>
+              ) : null}
             </div>
 
-            <form onSubmit={handleChatSubmit} className="mt-6 border-t border-[var(--stroke)] pt-5">
+            <form
+              onSubmit={handleChatSubmit}
+              className="mt-6 border-t border-[var(--stroke)] pt-5"
+            >
               <label className="block text-sm font-semibold text-[var(--navy-dark)]">
                 Message
                 <textarea
@@ -350,11 +460,17 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
                   className="mt-2 w-full resize-none rounded-[24px] border border-[var(--stroke)] bg-white px-4 py-3 text-sm outline-none transition focus:border-[var(--primary-blue)]"
                 />
               </label>
+              {chatError ? (
+                <p className="mt-3 text-sm font-semibold text-[var(--purple-secondary)]">
+                  {chatError}
+                </p>
+              ) : null}
               <button
                 type="submit"
-                className="mt-4 w-full rounded-[20px] bg-[var(--purple-secondary)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+                disabled={isChatLoading}
+                className="mt-4 w-full rounded-[20px] bg-[var(--purple-secondary)] px-4 py-3 text-sm font-semibold text-black transition hover:opacity-90"
               >
-                Add to chat
+                {isChatLoading ? "Waiting for AI..." : "Send to AI"}
               </button>
             </form>
           </aside>

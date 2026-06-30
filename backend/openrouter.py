@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 load_dotenv()
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = "openai/gpt-oss-120b:free"
+OPENROUTER_MODEL = "openai/gpt-oss-120b"
 BOARD_SYSTEM_PROMPT = """You are assisting with a kanban board.
 Reply for the user in "reply".
 Set "board" to null when no board change is needed.
@@ -120,12 +120,11 @@ def complete_board_chat(
             "content": f"Current board JSON:\n{json.dumps(board)}\n\nUser request:\n{message}",
         }
     )
+    raw_response = _complete_chat(messages, response_model=BoardChatResponse)
     try:
-        parsed = BoardChatResponse.model_validate_json(
-            _complete_chat(messages, response_model=BoardChatResponse)
-        )
+        parsed = BoardChatResponse.model_validate_json(raw_response)
     except ValidationError as exc:
         raise RuntimeError(
-            "OpenRouter response did not match BoardChatResponse"
+            f"OpenRouter response did not match BoardChatResponse: {exc}. Raw response: {raw_response}"
         ) from exc
     return parsed.model_dump()
