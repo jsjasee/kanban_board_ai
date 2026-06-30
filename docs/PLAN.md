@@ -49,17 +49,16 @@
 
 ## Part 7: Frontend + Backend
 
-- [ ] Replace in-memory board state bootstrap with backend fetch/load.
-- [ ] Save board edits through the API.
-- [ ] Keep drag, rename, add, and delete flows working against persisted data.
+- [x] Replace in-memory board state bootstrap with backend fetch/load.
+- [x] Save board edits through the API.
+- [x] Keep drag, rename, add, and delete flows working against persisted data.
 - Tests: frontend integration tests plus e2e persistence checks.
 - Success: refreshing the page preserves the latest board state.
 
 ## Part 8: AI connectivity
 
-- [ ] Add backend OpenRouter client configuration from `.env`.
-- [ ] Use model `openai/gpt-oss-120b`.
-- [ ] Add a simple connectivity path that asks `2+2`.
+- [ ] Add backend OpenRouter client configuration from `.env`. Use `OPEN_ROUTER_API_KEY` to fetch the value of the api key using python load_dotenv()
+- [ ] Use model `openai/gpt-oss-120b:free`.
 - Tests: mocked unit test plus one real connectivity check when env is present.
 - Success: backend can complete a basic OpenRouter request.
 

@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -36,13 +37,23 @@ class BoardApiTests(unittest.TestCase):
             "columns": [{"id": "col-backlog", "title": "Backlog", "cardIds": ["card-1"]}],
             "cards": {"card-1": {"id": "card-1", "title": "Task", "details": "Notes"}},
         }
+        expected = {
+            "columns": [
+                {"id": "col-backlog", "title": "Backlog", "cardIds": ["card-1"]},
+                {"id": "col-discovery", "title": "Discovery", "cardIds": []},
+                {"id": "col-progress", "title": "In Progress", "cardIds": []},
+                {"id": "col-review", "title": "Review", "cardIds": []},
+                {"id": "col-done", "title": "Done", "cardIds": []},
+            ],
+            "cards": payload["cards"],
+        }
 
         put_response = self.client.put("/api/board", json=payload)
         get_response = self.client.get("/api/board")
 
         self.assertEqual(put_response.status_code, 200)
-        self.assertEqual(put_response.json(), payload)
-        self.assertEqual(get_response.json(), payload)
+        self.assertEqual(put_response.json(), expected)
+        self.assertEqual(get_response.json(), expected)
 
     def test_invalid_json_body_is_rejected(self) -> None:
         response = self.client.put(
@@ -52,6 +63,27 @@ class BoardApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 422)
+
+    @patch("backend.main.complete_prompt", return_value="AI ok")
+    def test_ai_route_returns_model_reply(self, complete_prompt_mock) -> None:
+        response = self.client.post("/api/ai/test", json={"prompt": "Say hi"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"reply": "AI ok"})
+        complete_prompt_mock.assert_called_once_with("Say hi")
+
+    def test_ai_route_rejects_blank_prompt(self) -> None:
+        response = self.client.post("/api/ai/test", json={"prompt": "   "})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"detail": "Prompt is required"})
+
+    @patch("backend.main.complete_prompt", side_effect=RuntimeError("upstream failed"))
+    def test_ai_route_maps_client_errors_to_502(self, _complete_prompt_mock) -> None:
+        response = self.client.post("/api/ai/test", json={"prompt": "Say hi"})
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json(), {"detail": "upstream failed"})
 
 
 if __name__ == "__main__":

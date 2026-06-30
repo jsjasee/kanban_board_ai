@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
+from backend.openrouter import complete_prompt
 from backend.storage import get_board, save_board
 
 app = FastAPI(title="pm-backend")
@@ -35,6 +36,28 @@ def read_board() -> dict[str, Any]:
 def update_board(board: dict[str, Any]) -> dict[str, Any]:
     """Replace the current MVP user's persisted board."""
     return save_board(MVP_USERNAME, board)
+
+
+@app.post("/api/ai/test")
+def test_ai(payload: dict[str, str]) -> dict[str, str]:
+    """Run a basic OpenRouter prompt to verify backend AI connectivity.
+
+    Args:
+        payload: Request body containing a `prompt` string.
+
+    Returns:
+        The assistant text response for the supplied prompt.
+
+    Raises:
+        HTTPException: If the prompt is missing or the AI call fails.
+    """
+    prompt = payload.get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+    try:
+        return {"reply": complete_prompt(prompt)}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/{path:path}")

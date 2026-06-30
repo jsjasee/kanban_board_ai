@@ -6,4 +6,4 @@ CONTAINER_NAME="pm-mvp-app"
 
 docker build -t "$IMAGE_NAME" .
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-docker run -d --name "$CONTAINER_NAME" -p 8000:8000 "$IMAGE_NAME"
+docker run -d --name "$CONTAINER_NAME" --env-file .env -p 8000:8000 "$IMAGE_NAME"
