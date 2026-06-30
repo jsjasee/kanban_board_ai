@@ -16,6 +16,48 @@ DEFAULT_BOARD = {
 }
 
 
+def _normalize_board(board: dict) -> dict:
+    """Return a board with the required fixed columns restored in default order.
+
+    Args:
+        board: Persisted board payload from storage or the API.
+
+    Returns:
+        A normalized board containing all required columns plus only valid cards.
+    """
+    cards = board.get("cards", {})
+    saved_columns = {
+        column["id"]: column for column in board.get("columns", []) if "id" in column
+    }
+    # also this saved_columns is doing a dictionary comprehension to create a mapping of column IDs to their corresponding column data. It filters out any columns that do not have an "id" key, ensuring that only valid columns are included in the saved_columns dictionary.
+
+    # take down all the saved columns in the board, then compare it later with the defaults and populate these columns with the cards from the json.
+    columns = []
+
+    for default_column in DEFAULT_BOARD["columns"]:
+        saved_column = saved_columns.get(default_column["id"])
+        if not saved_column:
+            columns.append(default_column.copy())
+            continue
+
+        columns.append(
+            {
+                "id": default_column["id"],
+                "title": saved_column.get("title", default_column["title"]),
+                "cardIds": [
+                    card_id
+                    for card_id in saved_column.get("cardIds", [])
+                    if card_id in cards
+                ],
+            }
+        )
+
+    return {
+        "columns": columns,
+        "cards": cards,
+    }
+
+
 def _connect() -> sqlite3.Connection:
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
@@ -28,7 +70,9 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
 
 
 def _ensure_user(connection: sqlite3.Connection, username: str) -> int:
-    row = connection.execute("select id from users where username = ?", (username,)).fetchone()
+    row = connection.execute(
+        "select id from users where username = ?", (username,)
+    ).fetchone()
     if row:
         return int(row["id"])
     cursor = connection.execute(
@@ -39,7 +83,9 @@ def _ensure_user(connection: sqlite3.Connection, username: str) -> int:
 
 
 def _ensure_board(connection: sqlite3.Connection, user_id: int) -> None:
-    exists = connection.execute("select 1 from boards where user_id = ?", (user_id,)).fetchone()
+    exists = connection.execute(
+        "select 1 from boards where user_id = ?", (user_id,)
+    ).fetchone()
     if exists:
         return
     connection.execute(
@@ -58,12 +104,20 @@ def get_board(username: str) -> dict:
             "select board_json from boards where user_id = ?",
             (user_id,),
         ).fetchone()
-    return json.loads(row["board_json"])
+        board = _normalize_board(json.loads(row["board_json"]))
+        connection.execute(
+            """update boards
+            set board_json = ?, updated_at = CURRENT_TIMESTAMP
+            where user_id = ?""",
+            (json.dumps(board), user_id),
+        )
+    return board
 
 
 def save_board(username: str, board: dict) -> dict:
     """Persist a full board document for a user and return the stored value."""
-    payload = json.dumps(board)
+    normalized_board = _normalize_board(board)
+    payload = json.dumps(normalized_board)
     with _connect() as connection:
         _ensure_schema(connection)
         user_id = _ensure_user(connection, username)
@@ -74,4 +128,4 @@ def save_board(username: str, board: dict) -> dict:
             where user_id = ?""",
             (payload, user_id),
         )
-    return board
+    return normalized_board

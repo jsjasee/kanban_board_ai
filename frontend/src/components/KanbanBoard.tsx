@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -22,9 +22,37 @@ type KanbanBoardProps = {
   onLogout?: () => void;
 };
 
+/**
+ * Reads the persisted MVP board from the backend API.
+ */
+const fetchBoard = async (): Promise<BoardData> => {
+  const response = await fetch("/api/board");
+  if (!response.ok) {
+    throw new Error("Failed to load board.");
+  }
+  return response.json();
+};
+
+/**
+ * Writes the current board state to the backend API.
+ */
+const saveBoard = async (board: BoardData): Promise<void> => {
+  const response = await fetch("/api/board", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(board),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to save board.");
+  }
+};
+
 export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(() => initialData);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isReadyToSave, setIsReadyToSave] = useState(false);
+  const [syncError, setSyncError] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -34,6 +62,46 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
 
   const cardsById = useMemo(() => board.cards, [board.cards]);
   const columnIds = useMemo(() => board.columns.map((column) => column.id), [board.columns]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadBoard = async () => {
+      try {
+        const nextBoard = await fetchBoard();
+        if (!isCancelled) {
+          setBoard(nextBoard);
+          setIsReadyToSave(true);
+          setSyncError("");
+        }
+      } catch {
+        if (!isCancelled) {
+          setSyncError("Board failed to load.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadBoard();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isReadyToSave) {
+      return;
+    }
+
+    void saveBoard(board).then(
+      () => setSyncError(""),
+      () => setSyncError("Board failed to save.")
+    );
+  }, [board, isReadyToSave]);
 
   /**
    * Prefer the column under the pointer so filled columns stay droppable,
@@ -136,6 +204,14 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
 
+  if (isLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-6 py-10 text-sm font-semibold text-[var(--navy-dark)]">
+        Loading board...
+      </main>
+    );
+  }
+
   return (
     <div className="relative overflow-hidden">
       <div className="pointer-events-none absolute left-0 top-0 h-[420px] w-[420px] -translate-x-1/3 -translate-y-1/3 rounded-full bg-[radial-gradient(circle,_rgba(32,157,215,0.25)_0%,_rgba(32,157,215,0.05)_55%,_transparent_70%)]" />
@@ -185,6 +261,9 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
               </div>
             ))}
           </div>
+          {syncError ? (
+            <p className="text-sm font-semibold text-[var(--purple-secondary)]">{syncError}</p>
+          ) : null}
         </header>
 
         <DndContext

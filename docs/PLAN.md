@@ -33,17 +33,17 @@
 
 ## Part 5: Database modeling
 
-- [ ] Define a SQLite schema that supports multiple users and one board per user for now.
-- [ ] Store board state as JSON and document the approach in `docs/`.
-- [ ] Get user sign-off before implementing database-backed routes.
+- [x] Define a SQLite schema that supports multiple users and one board per user for now.
+- [x] Store board state as JSON and document the approach in `docs/`.
+- [x] Get user sign-off before implementing database-backed routes.
 - Tests: schema review and document review.
 - Success: schema and storage approach are approved.
 
 ## Part 6: Backend
 
-- [ ] Add routes to read a user's board.
-- [ ] Add routes to update board data for that user.
-- [ ] Create the SQLite database automatically if missing.
+- [x] Add routes to read a user's board.
+- [x] Add routes to update board data for that user.
+- [x] Create the SQLite database automatically if missing.
 - Tests: backend unit tests for create, read, update, and missing-db startup.
 - Success: backend persists and returns board state correctly.
 
