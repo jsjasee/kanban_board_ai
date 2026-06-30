@@ -2,6 +2,10 @@ import json
 import sqlite3
 from pathlib import Path
 
+from pydantic import ValidationError
+
+from backend.openrouter import BoardPayload
+
 DB_PATH = Path(__file__).resolve().parent / "pm.db"
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 DEFAULT_BOARD = {
@@ -129,3 +133,25 @@ def save_board(username: str, board: dict) -> dict:
             (payload, user_id),
         )
     return normalized_board
+
+
+def apply_ai_board_update(username: str, board_update: dict | None) -> dict:
+    """Validate and persist an AI-produced board update for a user.
+
+    Args:
+        username: Username whose single MVP board should be updated.
+        board_update: Full board payload from the AI, or `None` for no-op.
+
+    Returns:
+        The current persisted board after applying any valid AI update.
+
+    Raises:
+        RuntimeError: If the AI returned a board payload with the wrong shape.
+    """
+    if board_update is None:
+        return get_board(username)
+    try:
+        validated_board = BoardPayload.model_validate(board_update).model_dump()
+    except ValidationError as exc:
+        raise RuntimeError("AI board update did not match BoardPayload") from exc
+    return save_board(username, validated_board)
