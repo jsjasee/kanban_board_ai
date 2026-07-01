@@ -468,7 +468,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
               <button
                 type="submit"
                 disabled={isChatLoading}
-                className="mt-4 w-full rounded-[20px] bg-[var(--purple-secondary)] px-4 py-3 text-sm font-semibold text-black transition hover:opacity-90"
+                className="mt-4 w-full rounded-[20px] bg-[var(--purple-secondary)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
               >
                 {isChatLoading ? "Waiting for AI..." : "Send to AI"}
               </button>

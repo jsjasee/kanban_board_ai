@@ -117,7 +117,9 @@ def complete_board_chat(board: dict, history: list[dict], message: str) -> dict:
 
     reply = str(result.get("reply", "")).strip()
     if not reply:
-        raise RuntimeError(f'OpenRouter response did not include a valid "reply". Raw response: {content}')
+        raise RuntimeError(
+            f'OpenRouter response did not include a valid "reply". Raw response: {content}'
+        )
 
     board_json = result.get("board_json")
     if board_json is None:

@@ -78,7 +78,7 @@ export default function Home() {
         ) : null}
         <button
           type="submit"
-          className="mt-6 w-full rounded-2xl bg-(--purple-secondary) px-4 py-3 text-sm font-semibold text-black transition hover:opacity-90"
+          className="mt-6 w-full rounded-2xl bg-(--purple-secondary) px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
         >
           Sign in
         </button>
