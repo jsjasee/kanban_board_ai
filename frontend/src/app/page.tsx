@@ -47,16 +47,16 @@ export default function Home() {
         onSubmit={handleSubmit}
         className="w-full max-w-md rounded-[32px] border border-[var(--stroke)] bg-white/90 p-8 shadow-[var(--shadow)] backdrop-blur"
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-(--gray-text)">
           Sign In
         </p>
-        <h1 className="mt-3 font-display text-4xl font-semibold text-[var(--navy-dark)]">
+        <h1 className="mt-3 font-display text-4xl font-semibold text-foreground">
           Kanban Studio
         </h1>
-        <p className="mt-3 text-sm leading-6 text-[var(--gray-text)]">
+        <p className="mt-3 text-sm leading-6 text-(--gray-text)">
           Use the MVP credentials to access your board.
         </p>
-        <label className="mt-8 block text-sm font-semibold text-[var(--navy-dark)]">
+        <label className="mt-8 block text-sm font-semibold text-foreground">
           Username
           <input
             value={username}
@@ -73,10 +73,12 @@ export default function Home() {
             className="mt-2 w-full rounded-2xl border border-[var(--stroke)] px-4 py-3 outline-none transition focus:border-[var(--primary-blue)]"
           />
         </label>
-        {error ? <p className="mt-4 text-sm text-[var(--purple-secondary)]">{error}</p> : null}
+        {error ? (
+          <p className="mt-4 text-sm text-[var(--purple-secondary)]">{error}</p>
+        ) : null}
         <button
           type="submit"
-          className="mt-6 w-full rounded-2xl bg-[var(--purple-secondary)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+          className="mt-6 w-full rounded-2xl bg-(--purple-secondary) px-4 py-3 text-sm font-semibold text-black transition hover:opacity-90"
         >
           Sign in
         </button>
